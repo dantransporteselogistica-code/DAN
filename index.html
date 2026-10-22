@@ -347,9 +347,16 @@ var DANCORE = (function () {
     }
     function loadAudit() {
       tbA.textContent = '';
-      req(url('dan_audit') + '?select=at,user_email,collection,rec_id,action&order=at.desc&limit=100', {}).then(function (r) { return r.json(); }).then(function (rows) {
-        rows.forEach(function (a) { tbA.appendChild(el('tr', {}, [new Date(a.at).toLocaleString('pt-BR'), a.user_email || '—', a.collection.split('|').pop(), a.rec_id, a.action].map(function (t) { return el('td', { text: String(t) }); }))); });
-      }).catch(function () {});
+      var j = function (r) { return r.ok ? r.json() : []; };
+      Promise.all([
+        req(url('dan_audit') + '?select=at,user_email,collection,rec_id,action&order=at.desc&limit=100', {}).then(j).catch(function () { return []; }),
+        req(url('dan_audit_events') + '?select=at,user_email,module,rec_id,kind,message&order=at.desc&limit=100', {}).then(j).catch(function () { return []; })
+      ]).then(function (r) {
+        var rows = (Array.isArray(r[0]) ? r[0] : []).map(function (a) { return { at: a.at, u: a.user_email, c: String(a.collection || '').split('|').pop(), id: a.rec_id, a: a.action }; })
+          .concat((Array.isArray(r[1]) ? r[1] : []).map(function (e) { return { at: e.at, u: e.user_email, c: String(e.module || '').replace(/^dan-|-v1$/g, ''), id: e.rec_id || e.kind || '', a: e.message }; }));
+        rows.sort(function (x, y) { return String(y.at).localeCompare(String(x.at)); });
+        rows.slice(0, 150).forEach(function (a) { tbA.appendChild(el('tr', {}, [new Date(a.at).toLocaleString('pt-BR'), a.u || '—', a.c, a.id, a.a].map(function (t) { return el('td', { text: String(t == null ? '' : t) }); }))); });
+      });
     }
     var f = { nome: el('input', { placeholder: 'Nome' }), email: el('input', { type: 'email', placeholder: 'E-mail' }), pw: el('input', { type: 'text', placeholder: 'Senha inicial (mín. 8)' }), role: el('select', {}, ROLES.slice(1).map(function (r) { return el('option', { value: r, text: r }); })) };
     var add = el('button', { type: 'button', text: 'Criar usuário', on: { click: function () {
@@ -419,7 +426,7 @@ var DANCORE = (function () {
   window.addEventListener('online', function () { cycle(); });
   window.addEventListener('offline', function () { paint('off'); });
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') cycle(); });
-  window.DAN_SYNC = { now: cycle, logout: function () { logout(''); }, core: C };
+  window.DAN_SYNC = { now: cycle, logout: function () { logout(''); }, core: C, token: token, url: CFG.url, anon: CFG.anon };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
   setInterval(function () { if (sess() && document.visibilityState === 'visible') cycle(); }, CFG.poll);
 })();
@@ -2360,6 +2367,7 @@ html.cx-on .crumb:after{content:"Financeiro  /  Fluxo de caixa e cobrança";font
     return defaults();
   }
   var S = load();
+  if (S.cfg && S.cfg.modo === 'demo') S.cfg.modo = 'manual'; /* modo demonstração removido: nunca gerar CIOT/averbação simulados */
   function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast('Não foi possível gravar (armazenamento cheio/bloqueado).', 'bad'); } }
   function app() { try { return JSON.parse(localStorage.getItem(APPKEY)) || {}; } catch (e) { return {}; } }
   function by(list, id) { return (list || []).filter(function (x) { return x.id === id; })[0]; }
@@ -2571,7 +2579,7 @@ html.cx-on .crumb:after{content:"Financeiro  /  Fluxo de caixa e cobrança";font
   function vCfg() {
     var c = S.cfg, f = function (n, l, v, ph, type) { return '<label>' + l + '<input class="field" name="' + n + '" type="' + (type || 'text') + '" value="' + esc(v) + '" placeholder="' + esc(ph || '') + '"></label>'; };
     var h = '<form data-cfg><div class="cm-grid2"><section class="panel"><div class="panel-heading"><div><h2>Modo de operação</h2></div></div><div class="cm-pad"><div class="cm-radio">' +
-      [['demo', 'Demonstração', 'Gera códigos e protocolos simulados (prefixo DEMO). Sem valor fiscal.'], ['manual', 'Manual (recomendado para operar)', 'Você emite no portal da Instituição de Pagamento/averbadora e registra aqui o código e o protocolo.'], ['api', 'Integração por API (experimental)', 'Chama os endpoints informados abaixo. Exige CORS liberado e credenciais do provedor.']].map(function (m) { return '<label><input type="radio" name="modo" value="' + m[0] + '"' + (c.modo === m[0] ? ' checked' : '') + '><span><b>' + m[1] + '</b><small>' + m[2] + '</small></span></label>'; }).join('') + '</div></div></section>' +
+      [['manual', 'Manual (recomendado para operar)', 'Você emite no portal da Instituição de Pagamento/averbadora e registra aqui o código e o protocolo.'], ['api', 'Integração por API (experimental)', 'Chama os endpoints informados abaixo. Exige CORS liberado e credenciais do provedor.']].map(function (m) { return '<label><input type="radio" name="modo" value="' + m[0] + '"' + (c.modo === m[0] ? ' checked' : '') + '><span><b>' + m[1] + '</b><small>' + m[2] + '</small></span></label>'; }).join('') + '</div></div></section>' +
       '<section class="panel"><div class="panel-heading"><div><h2>Provedores</h2><p>Credenciais ficam só neste navegador (localStorage).</p></div></div><div class="cm-pad cm-form">' + f('ipNome', 'Instituição de Pagamento (CIOT)', c.ipNome, 'Ex.: nome da IP habilitada ANTT') + f('ipCnpj', 'CNPJ da IP', c.ipCnpj) + f('ipUrl', 'URL da API do CIOT', c.ipUrl, 'https://…') + f('ipToken', 'Token', c.ipToken, '', 'password') + f('avNome', 'Averbadora / seguradora', c.avNome) + f('avUrl', 'URL da API de averbação', c.avUrl, 'https://…') + f('avToken', 'Token', c.avToken, '', 'password') + '</div></section></div>' +
       '<section class="panel" style="margin-top:15px"><div class="panel-heading"><div><h2>Piso mínimo de frete (ANTT)</h2><p>Informe os coeficientes da tabela vigente da ANTT (Res. 5.867/2020 e atualizações): R$/km de deslocamento (CCD) por nº de eixos e R$ de carga/descarga (CC). Enquanto estiver em zero, o piso não é validado.</p></div></div><div class="cm-pad"><div class="cm-pisogrid cm-form" style="grid-template-columns:repeat(4,minmax(0,1fr))">' + [2, 3, 4, 5, 6, 7, 8, 9].map(function (e) { return '<label>CCD · ' + e + ' eixos (R$/km)<input class="field" name="ccd' + e + '" type="number" step="0.0001" min="0" value="' + (Number(c.pisoCCD[e]) || 0) + '"></label>'; }).join('') + '<label>CC (R$ fixo)<input class="field" name="cc" type="number" step="0.01" min="0" value="' + (Number(c.pisoCC) || 0) + '"></label></div></div></section>' +
       '<div class="heading-actions" style="margin-top:16px"><button class="btn btn-primary" type="submit">Salvar configurações</button><button class="btn btn-secondary" type="button" data-act="import">Importar backup</button><button class="btn btn-secondary" type="button" data-act="export-all">Exportar backup</button><button class="btn btn-quiet" type="button" data-act="wipe" style="color:var(--sx-bad,#dc2626)">Limpar dados do módulo</button></div></form>';
@@ -2748,7 +2756,7 @@ html.cx-on .crumb:after{content:"Financeiro  /  Fluxo de caixa e cobrança";font
   function onSubmit(e) {
     var f = e.target; if (!f.hasAttribute || !f.hasAttribute('data-cfg')) return; e.preventDefault();
     var d = fdata(f), c = S.cfg; ['ipNome', 'ipCnpj', 'ipUrl', 'ipToken', 'avNome', 'avUrl', 'avToken'].forEach(function (k) { c[k] = (d[k] || '').trim(); });
-    c.modo = d.modo || 'demo'; c.pisoCC = Number(d.cc) || 0; [2, 3, 4, 5, 6, 7, 8, 9].forEach(function (n) { c.pisoCCD[n] = Number(d['ccd' + n]) || 0; });
+    c.modo = d.modo || 'manual'; c.pisoCC = Number(d.cc) || 0; [2, 3, 4, 5, 6, 7, 8, 9].forEach(function (n) { c.pisoCCD[n] = Number(d['ccd' + n]) || 0; });
     save(); render(); toast('Configurações salvas.', 'ok');
   }
 
@@ -3606,7 +3614,26 @@ html.cx-on .crumb:after{content:"Financeiro  /  Fluxo de caixa e cobrança";font
     return '<div class="vg-kpis" style="grid-template-columns:repeat(5,minmax(0,1fr))">' + K('aguard', 'Aguardando despacho', aguard.length, brl(aguard.reduce(function (s, u) { return s + u.n.value; }, 0)) + ' em mercadoria') + K('Em trânsito', 'Em trânsito', tr.length, brl(tr.reduce(function (s, u) { return s + u.n.value; }, 0)) + ' em mercadoria') + K('Com ocorrência', 'Com ocorrência', oc.length, oc.length ? 'exigem tratativa' : 'nenhuma aberta', oc.length ? 'cm-bad' : 'cm-ok') + K('atraso', 'Atrasadas', at.length, at.length ? 'prazo vencido' : 'nenhuma', at.length ? 'cm-bad' : 'cm-ok') + K('Entregue', 'Entregues no mês', entM.length, otd == null ? 'pontualidade n/d' : 'pontualidade (OTD) ' + otd + '%') + '</div>';
   }
   function tabs() { return '<div class="cm-tabs">' + [['painel', 'Painel de entregas'], ['occ', 'Ocorrências'], ['rastreio', 'Rastreio']].map(function (t) { return '<button data-act="tab" data-v="' + t[0] + '" class="' + (state.tab === t[0] ? 'on' : '') + '">' + t[1] + '</button>'; }).join('') + '</div>'; }
-  function pod(o) { return E.pod[o.id] ? '<button class="eg-pod" data-act="pod" data-id="' + esc(o.id) + '" title="Ver comprovante"><img alt="Comprovante" src="' + E.pod[o.id].img + '"></button>' : ''; }
+  var POD_GIF = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+  function podSrc(p) { return p.img || (window.DAN_POD && DAN_POD.peek(p.path)) || ''; }
+  function podImg(p, st) { var src = podSrc(p); return '<img alt="Comprovante" src="' + (src || POD_GIF) + '"' + (src ? '' : ' data-pod="' + esc(p.path || '') + '"') + (st ? ' style="' + st + '"' : '') + '>'; }
+  /* comprovantes: foto sai do navegador/banco de registros e vai para o Supabase Storage (bucket dan-pod); aqui fica só o caminho */
+  var podBusy = false, podHold = 0, podWarned = false;
+  function podMigrate() {
+    if (podBusy || !window.DAN_POD || Date.now() < podHold) return;
+    var ids = Object.keys(E.pod || {}).filter(function (k) { return E.pod[k] && E.pod[k].img && !E.pod[k].path; });
+    if (!ids.length) return;
+    podBusy = true; var id = ids[0], rec = E.pod[id];
+    DAN_POD.upload(id, rec.img).then(function (path) {
+      var cur = E.pod[id]; if (cur && cur.img === rec.img) { E.pod[id] = { path: path, t: rec.t }; DAN_POD.seed(path, rec.img); persist(); }
+      podBusy = false; if (ids.length > 1) setTimeout(podMigrate, 400);
+    }).catch(function (e) {
+      podBusy = false; podHold = Date.now() + 10 * 60000;
+      if (!podWarned) { podWarned = true; console.warn('[DAN] Comprovantes mantidos no navegador (Storage indisponível):', e && e.message); }
+    });
+  }
+  setTimeout(podMigrate, 9000); setInterval(podMigrate, 60000);
+  function pod(o) { return E.pod[o.id] ? '<button class="eg-pod" data-act="pod" data-id="' + esc(o.id) + '" title="Ver comprovante">' + podImg(E.pod[o.id]) + '</button>' : ''; }
   function vPainel(us) {
     var A = app(), list = filtered(us);
     var h = '<div class="vg-bar"><input class="field" data-q placeholder="Buscar NF-e, chave, CT-e, cliente, motorista, placa…" value="' + esc(state.q) + '"><select class="select" data-f="cli"><option value="">Todos os clientes</option>' + (A.customers || []).map(function (c) { return '<option value="' + esc(c.id) + '"' + (state.cli === c.id ? ' selected' : '') + '>' + esc(c.name) + '</option>'; }).join('') + '</select>' + (state.st || state.cli || state.q ? '<button class="btn btn-quiet" data-act="clear">Limpar filtros</button>' : '') + '</div>';
@@ -3663,8 +3690,8 @@ html.cx-on .crumb:after{content:"Financeiro  /  Fluxo de caixa e cobrança";font
     return new Promise(function (res, rej) {
       var fr = new FileReader(); fr.onerror = rej; fr.onload = function () {
         var img = new Image(); img.onerror = rej; img.onload = function () {
-          var max = 1100, r = Math.min(1, max / Math.max(img.width, img.height)), c = document.createElement('canvas'); c.width = Math.round(img.width * r); c.height = Math.round(img.height * r); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-          var q = 0.62, out = c.toDataURL('image/jpeg', q); while (out.length > 180000 && q > 0.3) { q -= 0.08; out = c.toDataURL('image/jpeg', q); } res(out);
+          var max = 1000, r = Math.min(1, max / Math.max(img.width, img.height)), c = document.createElement('canvas'); c.width = Math.round(img.width * r); c.height = Math.round(img.height * r); c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+          var q = 0.6, out = c.toDataURL('image/jpeg', q); while (out.length > 110000 && q > 0.3) { q -= 0.06; out = c.toDataURL('image/jpeg', q); } res(out);
         }; img.src = fr.result;
       }; fr.readAsDataURL(file);
     });
@@ -3703,7 +3730,7 @@ html.cx-on .crumb:after{content:"Financeiro  /  Fluxo de caixa e cobrança";font
           if (is01 && !img && !m.dataset.warned) { m.dataset.warned = 1; return m.querySelector('#eg-live').innerHTML = errs([{ n: 'w', m: 'Sem foto do comprovante. Clique em “Registrar” de novo para confirmar sem imagem.' }]); }
           var id = rid(), rec = { id: id, nfe: u.n.number, code: d.code, date: d.date, receiver: (d.receiver || '').trim(), note: (d.note || '').trim() };
           E.ocx[id] = { hora: d.hora, local: (d.local || '').trim(), doc: (d.doc || '').trim() };
-          if (img) E.pod[id] = { img: img, t: stamp() };
+          if (img) { E.pod[id] = { img: img, t: stamp() }; setTimeout(podMigrate, 1500); }
           if (!is01 && ck(d.code) !== '06') E.trat[id] = { status: 'Aberta', acao: ck(d.code) === '04' ? 'Acionar seguro (avaria)' : ck(d.code) === '03' ? 'Devolver ao remetente' : ck(d.code) === '05' ? 'Corrigir endereço / contato' : 'Reagendar entrega', prazo: addDays(today(), 2), nota: '', log: [{ t: stamp(), m: 'Tratativa aberta automaticamente' }] };
           audit('Ocorrência ' + ck(d.code) + ' registrada: NF-e ' + u.n.number); persist(); closeModal();
           var conc = is01 && d.conc && u.trip && u.trip.status !== 'Entregue', lib = is01 && d.lib && u.cte;
@@ -3718,11 +3745,11 @@ html.cx-on .crumb:after{content:"Financeiro  /  Fluxo de caixa e cobrança";font
       function (m) { m.addEventListener('click', function (ev) { var x = ev.target.getAttribute && ev.target.getAttribute('data-x'); if (!x) return; if (x === 'n') return closeModal(); var d = fdata(m.querySelector('#eg-f')); if (d.status === 'Resolvida' && !(d.nota || '').trim() && !(t.log || []).length) return m.querySelector('#eg-live').innerHTML = errs([{ n: 'e', m: 'Descreva como foi resolvida.' }]);
         t.status = d.status; t.acao = d.acao; t.prazo = d.prazo; t.log = t.log || []; t.log.unshift({ t: stamp(), m: d.status + ' · ' + d.acao + (d.prazo ? ' · prazo ' + fdate(d.prazo) : '') + (d.nota ? ' — ' + d.nota.trim() : '') }); E.trat[oid] = t; audit('Tratativa NF-e ' + o.nfe + ': ' + d.status); persist(); closeModal(); render(); toast('Tratativa salva.', 'ok'); }); });
   }
-  function podModal(oid) { var p = E.pod[oid], o = by(app().occ, oid); if (!p) return; modal('<h2>Comprovante — NF-e ' + esc(o ? o.nfe : '') + '</h2><p class="cm-lead">Registrado em ' + fdt(p.t) + (o && o.receiver ? ' · recebedor ' + esc(o.receiver) : '') + '</p><img src="' + p.img + '" alt="Comprovante" style="max-width:100%;max-height:68vh;border-radius:8px;display:block;margin:0 auto"><div class="cm-foot"><button class="btn btn-primary" data-x="n">Fechar</button></div>', function (m) { m.addEventListener('click', function (e) { if (e.target.getAttribute && e.target.getAttribute('data-x')) closeModal(); }); }, 700); }
+  function podModal(oid) { var p = E.pod[oid], o = by(app().occ, oid); if (!p) return; modal('<h2>Comprovante — NF-e ' + esc(o ? o.nfe : '') + '</h2><p class="cm-lead">Registrado em ' + fdt(p.t) + (o && o.receiver ? ' · recebedor ' + esc(o.receiver) : '') + '</p>' + podImg(p, 'max-width:100%;max-height:68vh;border-radius:8px;display:block;margin:0 auto') + '<div class="cm-foot"><button class="btn btn-primary" data-x="n">Fechar</button></div>', function (m) { m.addEventListener('click', function (e) { if (e.target.getAttribute && e.target.getAttribute('data-x')) closeModal(); }); }, 700); }
   function delModal(oid) {
     var o = by(app().occ, oid); if (!o) return; var is01 = ck(o.code) === '01';
     modal('<h2>Excluir ocorrência?</h2><p class="cm-lead">NF-e ' + esc(o.nfe) + ' · ' + esc(o.code) + ' · ' + fdate(o.date) + '</p>' + (is01 ? '<div class="vg-warn"><p>Esta é uma <b>entrega realizada</b>. Excluir o registro <b>não</b> reverte a viagem nem o pagamento do terceiro (use “Voltar status” em Viagens se precisar).</p></div>' : '') + '<div class="cm-foot"><button class="btn btn-secondary" data-x="n">Cancelar</button><button class="btn btn-primary" data-x="y" style="background:var(--sx-bad,#dc2626);border-color:var(--sx-bad,#dc2626)">Excluir</button></div>',
-      function (m) { m.addEventListener('click', function (ev) { var x = ev.target.getAttribute && ev.target.getAttribute('data-x'); if (!x) return; if (x === 'n') return closeModal(); audit('Ocorrência excluída: NF-e ' + o.nfe + ' ' + ck(o.code)); delete E.ocx[oid]; delete E.pod[oid]; delete E.trat[oid]; persist(); closeModal(); commit(function (a) { return Object.assign({}, a, { occ: (a.occ || []).filter(function (v) { return v.id !== oid; }) }); }, function () { toast('Ocorrência excluída.', 'ok'); }); }); });
+      function (m) { m.addEventListener('click', function (ev) { var x = ev.target.getAttribute && ev.target.getAttribute('data-x'); if (!x) return; if (x === 'n') return closeModal(); audit('Ocorrência excluída: NF-e ' + o.nfe + ' ' + ck(o.code)); if (E.pod[oid] && E.pod[oid].path && window.DAN_POD) DAN_POD.remove(E.pod[oid].path); delete E.ocx[oid]; delete E.pod[oid]; delete E.trat[oid]; persist(); closeModal(); commit(function (a) { return Object.assign({}, a, { occ: (a.occ || []).filter(function (v) { return v.id !== oid; }) }); }, function () { toast('Ocorrência excluída.', 'ok'); }); }); });
   }
 
   /* ---------- compartilhamento, exportação e impressão ---------- */
@@ -3741,7 +3768,8 @@ html.cx-on .crumb:after{content:"Financeiro  /  Fluxo de caixa e cobrança";font
   function printWin(title, body, right) { var cfg = app().config || {}, w = window.open('', '_blank'); if (!w) return toast('O navegador bloqueou a janela de impressão.', 'bad'); w.document.write('<!doctype html><html lang="pt-BR"><meta charset="utf-8"><title>' + esc(title) + '</title><style>' + PCSS + '</style><div class="hd">' + DANLH() + '<div><h1>' + esc(title) + '</h1><small>' + esc(cfg.legalName || 'DAN Transportes e Logística') + (cfg.cnpj ? ' · CNPJ ' + esc(cfg.cnpj) : '') + '</small></div><div style="text-align:right"><small>' + right + '<br>Emitido em ' + fdt(stamp()) + '</small></div></div>' + body + '<div class="ft"><span>DAN TMS — documento operacional</span><span>' + esc(title) + '</span></div><script>window.onload=function(){window.print()}<\/script></html>'); w.document.close(); }
   function printPod(u) {
     var kv = function (k, v) { return '<div><b>' + k + '</b>' + esc(v == null || v === '' ? '—' : v) + '</div>'; }, eo = u.entOcc, x = eo ? E.ocx[eo.id] || {} : {}, p = eo && E.pod[eo.id];
-    var body = '<h2>Entrega</h2><div class="g">' + kv('NF-e', u.n.number + '/' + u.n.series) + kv('CT-e', u.cte && u.cte.number) + kv('Remetente', u.n.sender) + kv('Destinatário', u.n.recipient) + kv('Mercadoria', brl(u.n.value) + ' · ' + num(u.n.volume, 0) + ' ' + u.n.species + ' · ' + num(u.n.gross, 0) + ' kg') + kv('Viagem', tripCode(u)) + kv('Motorista', u.drv && u.drv.name) + kv('Veículo', u.veh && u.veh.plate) + kv('Entregue em', fdate(u.entDate) + (x.hora ? ' ' + x.hora : '')) + kv('Previsão', fdate(u.eta)) + kv('Recebedor', (eo && eo.receiver) || (u.vx && u.vx.recebedor)) + kv('Documento', x.doc) + kv('Local', x.local) + kv('Observação', eo && eo.note) + '</div><h2>Chave de acesso da NF-e</h2><p style="font-family:monospace;word-break:break-all">' + esc(u.n.key) + '</p>' + (p ? '<h2>Comprovante digitalizado</h2><img src="' + p.img + '" alt="Comprovante">' : '<p><i>Comprovante digital não anexado.</i></p>') + '<h2>Histórico</h2><div class="tl">' + events(u).map(function (e) { return '<div><time>' + esc(fdt(e.t)) + '</time><b>' + esc(e.title) + '</b> ' + esc(e.det) + '</div>'; }).join('') + '</div><div class="sg"><div>Recebedor</div><div>Motorista</div></div>';
+    if (p && !podSrc(p) && p.path && window.DAN_POD) { DAN_POD.get(p.path).then(function () { printPod(u); }, function () { toast('Não foi possível carregar o comprovante para impressão.', 'bad'); }); return; }
+    var body = '<h2>Entrega</h2><div class="g">' + kv('NF-e', u.n.number + '/' + u.n.series) + kv('CT-e', u.cte && u.cte.number) + kv('Remetente', u.n.sender) + kv('Destinatário', u.n.recipient) + kv('Mercadoria', brl(u.n.value) + ' · ' + num(u.n.volume, 0) + ' ' + u.n.species + ' · ' + num(u.n.gross, 0) + ' kg') + kv('Viagem', tripCode(u)) + kv('Motorista', u.drv && u.drv.name) + kv('Veículo', u.veh && u.veh.plate) + kv('Entregue em', fdate(u.entDate) + (x.hora ? ' ' + x.hora : '')) + kv('Previsão', fdate(u.eta)) + kv('Recebedor', (eo && eo.receiver) || (u.vx && u.vx.recebedor)) + kv('Documento', x.doc) + kv('Local', x.local) + kv('Observação', eo && eo.note) + '</div><h2>Chave de acesso da NF-e</h2><p style="font-family:monospace;word-break:break-all">' + esc(u.n.key) + '</p>' + (p ? '<h2>Comprovante digitalizado</h2><img src="' + podSrc(p) + '" alt="Comprovante">' : '<p><i>Comprovante digital não anexado.</i></p>') + '<h2>Histórico</h2><div class="tl">' + events(u).map(function (e) { return '<div><time>' + esc(fdt(e.t)) + '</time><b>' + esc(e.title) + '</b> ' + esc(e.det) + '</div>'; }).join('') + '</div><div class="sg"><div>Recebedor</div><div>Motorista</div></div>';
     printWin('Comprovante de entrega — NF-e ' + u.n.number, body, 'Status: <b>Entregue</b>');
   }
   function printList() {
@@ -4033,6 +4061,25 @@ html.cx-on .crumb:after{content:"Financeiro  /  Fluxo de caixa e cobrança";font
   var sec = function (t) { return '<div class="full tf-h">' + t + '</div>'; };
   function dupe(list, key, val, id) { val = digits(val) || String(val || '').toUpperCase(); return list.some(function (x) { return x.id !== id && (digits(x[key]) || String(x[key] || '').toUpperCase()) === val && val; }); }
 
+  function cepLookup(m) {
+    var c = m.querySelector('[name=cep]'); if (!c) return;
+    function put(n, v) { var i = m.querySelector('[name=' + n + ']'); if (i && v) i.value = v; }
+    function mk(v) { v = digits(v).slice(0, 8); return v.length > 5 ? v.slice(0, 5) + '-' + v.slice(5) : v; }
+    function fill(manual) {
+      var v = digits(c.value); if (v.length !== 8) { if (manual) toast('Informe um CEP com 8 dígitos.', 'warn'); return; }
+      fetch('https://viacep.com.br/ws/' + v + '/json/').then(function (r) { return r.json(); }).then(function (j) {
+        if (j.erro) { toast('CEP não encontrado.', 'warn'); return; }
+        put('logradouro', j.logradouro); put('bairro', j.bairro); put('mun', j.localidade); put('uf', j.uf); put('codMun', j.ibge);
+        toast('Endereço preenchido pelo CEP.', 'ok');
+        var n = m.querySelector('[name=numero]'); if (n && !n.value) n.focus();
+      }).catch(function () { toast('Sem conexão para consultar o CEP. Preencha manualmente.', 'warn'); });
+    }
+    c.addEventListener('input', function () { var x = mk(c.value); if (x !== c.value) c.value = x; });
+    c.addEventListener('blur', function () { var l = m.querySelector('[name=logradouro]'); if (digits(c.value).length === 8 && l && !l.value) fill(false); });
+    var u = m.querySelector('[name=uf]'); if (u) u.addEventListener('input', function () { u.value = u.value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 2); });
+    var cm = m.querySelector('[name=codMun]'); if (cm) cm.addEventListener('input', function () { cm.value = digits(cm.value).slice(0, 7); });
+    m.addEventListener('click', function (ev) { var l = ev.target.closest && ev.target.closest('[data-cep]'); if (l) { ev.preventDefault(); fill(true); } });
+  }
   function formModal(kind, id) {
     var A = app(), r = id ? by(kind === 'drv' ? A.drivers : kind === 'veh' ? A.vehicles : A.customers, id) : null, x = r ? X(kind, id) : {}, isNew = !r, html = '';
     var titles = { drv: 'motorista', veh: 'veículo', cus: 'cliente' };
@@ -4050,9 +4097,10 @@ html.cx-on .crumb:after{content:"Financeiro  /  Fluxo de caixa e cobrança";font
         sec('Manutenção') + fld('Odômetro atual (km)', 'kmAtual', x.kmAtual, { type: 'number' }) + fld('Próxima revisão (km)', 'revKm', x.revKm, { type: 'number' }) + fld('Próxima revisão (data)', 'revData', x.revData, { type: 'date' }) + fld('Observações', 'obs', x.obs, { full: 1 });
     } else {
       r = r || { term: 30 };
-      html = sec('Identificação') + fld('Razão social / nome *', 'name', r.name, { full: 1 }) + fld('CNPJ / CPF *', 'doc', r.doc) + fld('Inscrição estadual', 'ie', r.ie) + fld('Endereço', 'address', r.address, { full: 1 }) + sec('Comercial') + fld('Prazo de pagamento (dias)', 'term', r.term, { type: 'number' }) + fld('Limite de crédito (R$)', 'limite', x.limite, { type: 'number', step: '0.01', hint: 'Alerta quando o saldo a receber ultrapassar o limite.' }) + sel('Situação', 'status', ['Ativo', 'Inativo'], x.status || 'Ativo') + fld('Contato', 'contato', x.contato) + fld('Telefone', 'fone', x.fone) + fld('E-mail', 'email', x.email, { type: 'email' }) + fld('Observações', 'obs', x.obs, { full: 1 });
+      html = sec('Identificação') + fld('Razão social / nome *', 'name', r.name, { full: 1 }) + fld('CNPJ / CPF *', 'doc', r.doc) + fld('Inscrição estadual', 'ie', r.ie) + (r.address && !r.logradouro ? fld('Endereço cadastrado (texto antigo)', 'address', r.address, { full: 1, hint: 'Preencha o endereço estruturado abaixo; o texto antigo será substituído ao salvar.' }) : '') + sec('Endereço (necessário para CT-e)') + fld('CEP', 'cep', r.cep, { ph: '00000-000', hint: '<a href="#" data-cep="1">Buscar endereço pelo CEP</a>' }) + fld('Logradouro', 'logradouro', r.logradouro) + fld('Número', 'numero', r.numero) + fld('Complemento', 'compl', r.compl) + fld('Bairro', 'bairro', r.bairro) + fld('Município', 'mun', r.mun) + fld('UF', 'uf', r.uf, { ph: 'SP' }) + fld('Código IBGE do município', 'codMun', r.codMun, { hint: '7 dígitos. Preenchido pelo CEP.' }) + sec('Comercial') + fld('Prazo de pagamento (dias)', 'term', r.term, { type: 'number' }) + fld('Limite de crédito (R$)', 'limite', x.limite, { type: 'number', step: '0.01', hint: 'Alerta quando o saldo a receber ultrapassar o limite.' }) + sel('Situação', 'status', ['Ativo', 'Inativo'], x.status || 'Ativo') + fld('Contato', 'contato', x.contato) + fld('Telefone', 'fone', x.fone) + fld('E-mail', 'email', x.email, { type: 'email' }) + fld('Observações', 'obs', x.obs, { full: 1 });
     }
     modal('<h2>' + (isNew ? 'Novo ' : 'Editar ') + titles[kind] + '</h2><p class="cm-lead">Campos com * são obrigatórios. Documentos vencidos impedem a saída de viagens.</p><form class="cm-form" id="tf-f">' + html + '</form><div id="tf-live" style="margin-top:12px"></div><div class="cm-foot"><button class="btn btn-secondary" data-x="n">Cancelar</button><button class="btn btn-primary" data-x="y">' + (isNew ? 'Cadastrar' : 'Salvar alterações') + '</button></div>', function (m) {
+      if (kind === 'cus') cepLookup(m);
       m.addEventListener('click', function (ev) {
         var xx = ev.target.getAttribute && ev.target.getAttribute('data-x'); if (!xx) return; if (xx === 'n') return closeModal();
         var d = fdata(m.querySelector('#tf-f')), A2 = app(), es = [], ws = [];
@@ -4070,6 +4118,10 @@ html.cx-on .crumb:after{content:"Financeiro  /  Fluxo de caixa e cobrança";font
           if (!d.crlvVal) ws.push('Validade do CRLV não informada — o veículo ficará com pendência.');
         } else {
           if (!(d.name || '').trim()) es.push('Informe o nome do cliente.');
+          if (d.cep && digits(d.cep).length !== 8) es.push('CEP deve ter 8 dígitos.');
+          if (d.uf && !/^(AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)$/i.test(String(d.uf).trim())) es.push('UF inválida.');
+          if (d.codMun && digits(d.codMun).length !== 7) es.push('Código IBGE do município deve ter 7 dígitos.');
+          if (!es.length && !(d.cep && d.logradouro && d.numero && d.bairro && d.mun && d.uf && digits(d.codMun).length === 7)) ws.push('Endereço incompleto: para emitir CT-e com este cliente faltam CEP, logradouro, número, bairro, município, UF ou código IBGE.');
           if (!digits(d.doc)) es.push('Informe o CNPJ/CPF.'); else if (dupe(A2.customers || [], 'doc', d.doc, id)) es.push('Já existe cliente com este documento.'); else if (digits(d.doc).length === 11 ? !cpfOk(d.doc) : !cnpjOk(d.doc)) ws.push('Documento com dígito verificador inválido.');
         }
         var live = m.querySelector('#tf-live');
@@ -4089,7 +4141,9 @@ html.cx-on .crumb:after{content:"Financeiro  /  Fluxo de caixa e cobrança";font
       base = { id: id, plate: d.plate, uf: (d.uf || '').toUpperCase(), renavam: digits(d.renavam), axles: Number(d.axles) || 0, body: d.body || '', owner: (d.owner || '').trim() };
     } else {
       ['limite', 'status', 'contato', 'fone', 'email', 'obs'].forEach(function (k) { ext[k] = d[k] || ''; });
-      base = { id: id, name: d.name.trim(), doc: fmtCnpj(d.doc), ie: d.ie || '', address: d.address || '', term: Number(d.term) || 0 };
+      var T = function (k) { return String(d[k] == null ? '' : d[k]).trim(); }, cepF = digits(d.cep).length === 8 ? digits(d.cep).replace(/^(\d{5})(\d{3})$/, '$1-$2') : T('cep'), uf2 = T('uf').toUpperCase();
+      var rua = [[T('logradouro'), T('numero')].filter(Boolean).join(', '), T('compl'), T('bairro'), [T('mun'), uf2].filter(Boolean).join('/'), cepF ? 'CEP ' + cepF : ''].filter(Boolean).join(' - ');
+      base = { id: id, name: d.name.trim(), doc: fmtCnpj(d.doc), ie: d.ie || '', address: rua || d.address || '', term: Number(d.term) || 0, cep: cepF, logradouro: T('logradouro'), numero: T('numero'), compl: T('compl'), bairro: T('bairro'), mun: T('mun'), uf: uf2, codMun: digits(d.codMun) };
     }
     var old = F[kind][id] || {}, ch = Object.keys(ext).filter(function (k) { return String(old[k] || '') !== String(ext[k] || '') && !isNew; });
     F[kind][id] = Object.assign({}, old, ext); audit(kind, id, isNew ? 'Cadastro criado' : 'Cadastro editado' + (ch.length ? ' (' + ch.join(', ') + ')' : '')); persist();
@@ -5016,7 +5070,7 @@ fs=grp(D.en,e=>e.status,e=>e.status,e=>e.amount),ufs=grp(D.cs,c=>uf(D,c),c=>'Des
 sel=(k,a,v,lbl)=>'<select class="dd-chip" data-sel="'+k+'"><option value="">'+lbl+'</option>'+a.map(x=>'<option value="'+E(x.id)+'"'+(x.id===v?' selected':'')+'>'+E(x.name)+'</option>').join('')+'</select>',
 h='<div class="dd-top"><div><div class="metric-label" style="letter-spacing:.12em">OPERAÇÃO</div><h1>Dashboard'+(F.demo?' <small class="dd-demo">DADOS DE EXEMPLO</small>':'')+'</h1><div class="metric-note">Clique em qualquer indicador ou gráfico para ver os registros por trás do número.</div></div><div class="dd-f">'+
 [['7','7 dias'],['30','30 dias'],['90','90 dias'],['all','Tudo']].map(p=>'<button class="dd-chip'+(F.per===p[0]?' on':'')+'" data-act="per" data-k="'+p[0]+'">'+p[1]+'</button>').join('')+sel('cli',cu,F.cli,'Todos os clientes')+sel('mot',dv,F.mot,'Todos os motoristas')+
-'<button class="dd-chip'+(F.demo?' on':'')+'" data-act="demo">Dados de exemplo</button><button class="dd-chip" data-act="clr">Limpar filtros</button></div></div>'+
+'<button class="dd-chip" data-act="clr">Limpar filtros</button></div></div>'+
 '<div class="metric-grid">'+K.map((k,i)=>'<div class="metric-card clk" role="button" tabindex="0" data-act="kpi" data-k="'+i+'"><div class="metric-icon '+k.t+'">'+k.i+'</div><div class="metric-label">'+k.l+'</div><strong>'+k.v+'</strong><div class="metric-note">'+k.n+'</div></div>').join('')+'</div><div class="dd-grid">'+
 chart('Faturamento por '+(D.wk?'semana':'dia'),'Clique em uma barra para listar os CT-es.',vbars(fk.map(k=>({id:k,s:dm(k),l:[pre+dm(k)+': '+R$(fb[k])],v:[fb[k]]})),'day',[COL[0]]),'w')+
 chart('Faturamento por cliente','Clique para filtrar todo o painel por cliente.',hb(grp(D.cs.concat(D.ra.map(a=>({customerId:a.customerId,gross:a.amount}))),c=>c.customerId,c=>nm(cu,c.customerId),c=>c.gross),'cli',F.cli))+
@@ -5061,7 +5115,7 @@ kc=(i,c,ex)=>'<div class="nv-c" role="button" tabindex="0" data-act="kpi" data-k
 mi=i=>'<div class="nv-s" role="button" tabindex="0" data-act="kpi" data-k="'+i+'"><b>'+K[i].v+'</b><span>'+K[i].l+'</span><small>'+K[i].n+'</small></div>';
 BOX.innerHTML='<div class="dd-top"><div><div class="metric-label" style="letter-spacing:.12em">OPERAÇÃO</div><h1>Visão geral'+(F.demo?' <small class="dd-demo">DADOS DE EXEMPLO</small>':'')+'</h1><div class="metric-note">'+(P?'Variações comparadas aos '+F.per+' dias anteriores. ':'')+'Clique em qualquer indicador ou gráfico para ver os registros.</div></div><div class="dd-f">'+
 [['7','7 dias'],['30','30 dias'],['90','90 dias'],['all','Tudo']].map(p=>'<button class="dd-chip'+(F.per===p[0]?' on':'')+'" data-act="per" data-k="'+p[0]+'">'+p[1]+'</button>').join('')+sel('cli',cu,F.cli,'Todos os clientes')+sel('mot',dv,F.mot,'Todos os motoristas')+
-'<button class="dd-chip'+(F.demo?' on':'')+'" data-act="demo">Dados de exemplo</button><button class="dd-chip" data-act="clr">Limpar filtros</button><button class="dd-chip" data-act="lay">Layout anterior</button></div></div>'+
+'<button class="dd-chip" data-act="clr">Limpar filtros</button><button class="dd-chip" data-act="lay">Layout anterior</button></div></div>'+
 '<div class="nv-k">'+kc(0,1,P?dlt(dp(fat,P.fat)):'')+kc(1,2,P?dlt(dp(mg,P.mg)):'')+kc(2,6)+kc(3,5)+kc(4,3,P?dlt(dp(D.cs.length,P.n)):'')+'</div><div class="nv-m">'+mi(5)+mi(6)+mi(7)+'</div>'+
 '<div class="nv-g nv-r2"><section class="nv-p"><div class="nv-hd"><h3>Faturamento por '+(D.wk?'semana':'dia')+'</h3><div class="nv-tabs"><button class="'+(mar?'':'on')+'" data-act="tab" data-k="fat">Faturamento</button><button class="'+(mar?'on':'')+'" data-act="tab" data-k="mar">% Margem</button></div></div><div class="nv-sc"><div style="min-width:'+fk.length*46+'px"><div class="nv-bars">'+bars+'</div><div class="nv-xl">'+xl+'</div></div></div></section>'+
 '<section class="nv-p"><h3>Faturamento por rota</h3>'+tb+'</section></div>'+
@@ -5070,7 +5124,7 @@ BOX.innerHTML='<div class="dd-top"><div><div class="metric-label" style="letter-
 '<div class="nv-g nv-r2e"><section class="nv-p"><h3>Viagens por status</h3>'+dn(st,'st','viagens',N)+'</section><section class="nv-p"><h3>Financeiro por situação</h3>'+dn(fs,'fs','R$',R$)+'</section></div>'+drp(dr)}
 
 function act(a,k){var kk=k.split('|')[0],j=+k.split('|')[1]||0;switch(a){
-case'per':F.per=k;F.drill=null;break;case'demo':F.demo=F.demo?0:1;F.cli=F.mot='';F.drill=null;break;case'clr':F.cli=F.mot='';F.per='all';F.drill=null;break;
+case'per':F.per=k;F.drill=null;break;case'demo':break; /* modo exemplo desativado: o sistema só mostra dados reais */case'clr':F.cli=F.mot='';F.per='all';F.drill=null;break;
 case'cli':F.cli=F.cli===k?'':k;F.drill=null;break;case'mot':F.mot=F.mot===k?'':k;F.drill=null;break;case'cl':F.drill=null;break;case'lay':F.old=!F.old;F.drill=null;break;case'tab':F.tab=k;break;case'rt':F.drill=D=>dC(D,D.cs.filter(c=>roF(D,c)===k),'CT-es · '+k);break;
 case'kpi':F.drill=D=>kpis(D)[+k].d();break;
 case'day':F.drill=D=>dF(D,D.cs.filter(c=>bk(D,c.date)===kk),D.ra.filter(a=>bk(D,a.due)===kk),'Faturamento · '+(D.wk?'semana de ':'')+dm(kk));break;
@@ -6147,11 +6201,13 @@ html body .sidebar .nav-link{padding-left:12px;padding-right:12px}
 }
 </style>
 <script id="dan-v52-nfse-import">
-/* Cadastro automático (uma vez) a partir da NFS-e nº 2: cliente Mercado Livre + dados da empresa.
-   Idempotente: só adiciona o cliente se o CNPJ ainda não existir e só preenche campos da empresa que estiverem vazios. */
+/* Cadastro automático a partir da NFS-e nº 2: cliente Mercado Livre + dados da empresa.
+   Idempotente: só adiciona o cliente se o CNPJ não existir; se existir sem endereço estruturado, completa o endereço;
+   na empresa só preenche campos vazios. */
 (function(){'use strict';
-var FLAG='dan-v52-nfse-import',K='rota-erp-v2';
-var CLIENTE={name:'MERCADO LIVRE BRASIL LTDA',doc:'03.007.331/0122-39',ie:'',address:'Av. das Nações Unidas, 3000, 3003 - Setor A Parte C - Bonfim - Osasco/SP - CEP 06233-903'};
+var FLAG='dan-v53-nfse-import',K='rota-erp-v2';
+var END={cep:'06233-903',logradouro:'Avenida das Nações Unidas',numero:'3000',compl:'3003 - Setor A Parte C',bairro:'Bonfim',mun:'Osasco',uf:'SP',codMun:'3534401'};
+var CLIENTE=Object.assign({name:'MERCADO LIVRE BRASIL LTDA',doc:'03.007.331/0122-39',ie:'',address:'Avenida das Nações Unidas, 3000 - 3003 - Setor A Parte C - Bonfim - Osasco/SP - CEP 06233-903',term:0},END);
 var EMPRESA={legalName:'DAN Transportes e Logística Ltda',fantasia:'DAN Transportes',cnpj:'64.449.809/0001-88',im:'0.132.153-6',cep:'05845-290',logradouro:'Rua Governador Ayres de Saldanha',numero:'75',bairro:'Jardim Brasília',mun:'São Paulo',uf:'SP',codMun:'3550308'};
 var dig=function(x){return String(x||'').replace(/\D/g,'')};
 function run(){
@@ -6161,20 +6217,132 @@ function run(){
     var o=JSON.parse(raw);if(!o||typeof o!=='object')return;
     var ch=false;
     o.customers=Array.isArray(o.customers)?o.customers:[];
-    if(!o.customers.some(function(c){return dig(c&&c.doc)===dig(CLIENTE.doc)})){
-      o.customers.push({id:'cus-ml-'+dig(CLIENTE.doc).slice(8,12),name:CLIENTE.name,doc:CLIENTE.doc,ie:CLIENTE.ie,address:CLIENTE.address,term:0});ch=true;
-    }
+    var ex=o.customers.filter(function(c){return dig(c&&c.doc)===dig(CLIENTE.doc)})[0];
+    if(!ex){o.customers.push(Object.assign({id:'cus-ml-'+dig(CLIENTE.doc).slice(8,12)},CLIENTE));ch=true}
+    else if(!ex.logradouro){Object.assign(ex,END,{address:CLIENTE.address});ch=true}
     o.config=o.config&&typeof o.config==='object'?o.config:{};
     Object.keys(EMPRESA).forEach(function(k){if(!String(o.config[k]==null?'':o.config[k]).trim()){o.config[k]=EMPRESA[k];ch=true}});
     if(ch){
-      localStorage.setItem(K,JSON.stringify(o));
-      if(localStorage.getItem(K)!==JSON.stringify(o))return; /* modo leitura: não gravou */
+      var j=JSON.stringify(o);
+      localStorage.setItem(K,j);
+      if(localStorage.getItem(K)!==j)return; /* modo leitura: não gravou */
       localStorage.setItem(FLAG,'1');
-      setTimeout(function(){location.reload()},1800); /* deixa o sync enviar para a equipe antes de recarregar */
+      setTimeout(function(){location.reload()},1800);
     }else localStorage.setItem(FLAG,'1');
   }catch(e){}
 }
 setTimeout(run,6000);
+})();
+</script>
+<style id="dan-v54-quota-css">
+#v54-q{position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:300;max-width:min(560px,calc(100vw - 24px));display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:12px;background:hsl(var(--card));color:hsl(var(--foreground));border:1px solid hsl(var(--destructive));box-shadow:0 12px 32px -10px rgba(0,0,0,.45);font:500 13px/1.45 system-ui,sans-serif}
+#v54-q b{display:block;margin-bottom:2px;color:hsl(var(--destructive))}
+#v54-q button{flex:none;border:0;background:transparent;color:inherit;font-size:18px;line-height:1;cursor:pointer;padding:0 2px}
+#v54-m{order:-2;cursor:default;font-size:12px}
+#v54-m.warn{border-color:#d97706;color:#b45309}
+#v54-m.bad{border-color:hsl(var(--destructive));color:hsl(var(--destructive))}
+#v50-tg i.warn{background:#d97706}
+</style>
+<script id="dan-v54-quota-js">
+/* Guarda do armazenamento local: o app grava tudo no localStorage (~5 MB). Antes, ao encher, a gravação falhava em silêncio
+   e a alteração não era salva nem sincronizada. Agora: aviso visível na falha + medidor no menu de ferramentas. */
+(function(){'use strict';
+var LIMIT=5000000,last=0,ST=window.localStorage;
+function usage(){var n=0;try{for(var i=0;i<ST.length;i++){var k=ST.key(i);n+=k.length+(ST.getItem(k)||'').length}}catch(e){}return n}
+function isQuota(e){return e&&(e.name==='QuotaExceededError'||e.name==='NS_ERROR_DOM_QUOTA_REACHED'||e.code===22||e.code===1014)}
+function banner(k){
+  if(Date.now()-last<60000)return;last=Date.now();
+  var o=document.getElementById('v54-q');if(o)o.remove();
+  var d=document.createElement('div');d.id='v54-q';d.setAttribute('role','alert');
+  d.innerHTML='<div><b>Armazenamento do navegador cheio</b>A última alteração <u>não foi salva</u> neste computador e pode não ter sido enviada à equipe. Faça um backup em Relatórios e backup e avise o responsável pelo sistema antes de continuar.</div><button type="button" aria-label="Fechar">×</button>';
+  d.querySelector('button').onclick=function(){d.remove()};
+  document.body.appendChild(d);
+}
+var prev=Storage.prototype.setItem;
+Storage.prototype.setItem=function(k,v){
+  try{return prev.apply(this,arguments)}
+  catch(e){if(isQuota(e)&&this===ST)banner(k);throw e}
+};
+function meter(){
+  var fab=document.getElementById('v40-fab');if(!fab)return;
+  var u=usage(),p=Math.min(100,Math.round(u/LIMIT*100)),cls=p>=90?'bad':p>=70?'warn':'';
+  var m=document.getElementById('v54-m');
+  if(!m){m=document.createElement('div');m.id='v54-m';m.className='v40-btn';fab.appendChild(m)}
+  m.className='v40-btn '+cls;
+  m.textContent='Armazenamento local: '+p+'% ('+(u/1e6).toFixed(1).replace('.',',')+' de ~5 MB)';
+  var dot=document.querySelector('#v50-tg i');if(dot)dot.classList.toggle('warn',p>=70);
+  if(p>=70){var t=document.getElementById('v50-tg');if(t&&dot&&!dot.classList.contains('on'))dot.classList.add('on')}
+}
+setTimeout(meter,3000);setInterval(meter,30000);
+})();
+</script>
+<script id="dan-v55-storage-audit">
+/* (1) DAN_POD: comprovantes no Supabase Storage (bucket privado "dan-pod").  (2) Auditoria dos módulos enviada ao servidor (dan_audit_events, só inserção).
+   Exige rodar supabase_storage_audit.sql no projeto. Sem isso tudo continua como antes (foto no navegador, auditoria local). */
+(function(){'use strict';
+var BUCKET='dan-pod',cache={},inflight={};
+function S(){return window.DAN_SYNC||{}}
+function hdr(t,x){var h={apikey:S().anon,Authorization:'Bearer '+t};for(var k in x||{})h[k]=x[k];return h}
+function tok(){return S().token?S().token():Promise.reject(new Error('sem sessão'))}
+function toBlob(d){var m=/^data:([^;]+);base64,(.*)$/.exec(d||'');if(!m)throw new Error('imagem inválida');var b=atob(m[2]),u=new Uint8Array(b.length);for(var i=0;i<b.length;i++)u[i]=b.charCodeAt(i);return new Blob([u],{type:m[1]})}
+function toData(b){return new Promise(function(res,rej){var r=new FileReader();r.onload=function(){res(r.result)};r.onerror=rej;r.readAsDataURL(b)})}
+function pathFor(id){return 'pod/'+String(id).replace(/[^A-Za-z0-9_-]/g,'_')+'.jpg'}
+function fail(r){return r.text().then(function(x){throw new Error('Storage HTTP '+r.status+' '+String(x).slice(0,120))})}
+var POD={
+  peek:function(p){return cache[p]||''},
+  seed:function(p,d){cache[p]=d},
+  upload:function(id,d){
+    var p=pathFor(id),b=toBlob(d);
+    return tok().then(function(t){return fetch(S().url+'/storage/v1/object/'+BUCKET+'/'+p,{method:'POST',headers:hdr(t,{'Content-Type':b.type||'image/jpeg','x-upsert':'true'}),body:b})})
+      .then(function(r){return r.ok?p:fail(r)});
+  },
+  get:function(p){
+    if(cache[p])return Promise.resolve(cache[p]);
+    if(inflight[p])return inflight[p];
+    return inflight[p]=tok().then(function(t){return fetch(S().url+'/storage/v1/object/authenticated/'+BUCKET+'/'+p,{headers:hdr(t)})})
+      .then(function(r){return r.ok?r.blob():fail(r)}).then(toData)
+      .then(function(d){cache[p]=d;delete inflight[p];return d},function(e){delete inflight[p];throw e});
+  },
+  remove:function(p){return tok().then(function(t){return fetch(S().url+'/storage/v1/object/'+BUCKET+'/'+p,{method:'DELETE',headers:hdr(t)})}).catch(function(){})}
+};
+window.DAN_POD=POD;
+function hydrate(root){
+  var l=root.querySelectorAll?root.querySelectorAll('img[data-pod]'):[];
+  Array.prototype.forEach.call(l,function(im){
+    var p=im.getAttribute('data-pod');if(!p||im.dataset.podOk)return;
+    POD.get(p).then(function(d){im.src=d;im.dataset.podOk='1'},function(){im.alt='Comprovante indisponível';im.title='Não foi possível carregar o comprovante'});
+  });
+}
+new MutationObserver(function(ms){ms.forEach(function(m){Array.prototype.forEach.call(m.addedNodes,function(n){if(n.nodeType===1)hydrate(n.matches&&n.matches('img[data-pod]')?{querySelectorAll:function(){return[n]}}:n)})})}).observe(document.documentElement,{childList:true,subtree:true});
+
+/* ---------- auditoria ---------- */
+var KEYS=['dan-ciot-v1','dan-viagens-v1','dan-entregas-v1','dan-frota-v1','dan-fin-v1'],SENT='dan-audit-sent',hold=0,warned=false,busy=false;
+function get(k){try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}}
+function sess(){return get('dan-auth')||{}}
+function pushAudit(){
+  if(busy||Date.now()<hold||!S().core||!sess().access)return;
+  var sent=get(SENT)||[],seen={},i;for(i=0;i<sent.length;i++)seen[sent[i]]=1;
+  var email=sess().email||'',rows=[];
+  KEYS.forEach(function(k){
+    var o=get(k),a=o&&Array.isArray(o.audit)?o.audit:[];
+    a.forEach(function(e){
+      if(!e||typeof e!=='object')return;
+      var id=S().core.recHash({k:k,u:email,e:e});if(seen[id])return;seen[id]=1;
+      rows.push({id:id,user_email:email,module:k,kind:e.k||null,rec_id:e.id!=null?String(e.id):null,message:String(e.m||e.msg||'').slice(0,1000),event_at:e.t!=null?String(e.t):null,payload:e});
+    });
+  });
+  if(!rows.length)return;
+  busy=true;var batch=rows.slice(0,100);
+  tok().then(function(t){return fetch(S().url+'/rest/v1/dan_audit_events?on_conflict=id',{method:'POST',headers:hdr(t,{'Content-Type':'application/json',Prefer:'resolution=ignore-duplicates,return=minimal'}),body:JSON.stringify(batch)})})
+    .then(function(r){
+      if(!r.ok)return r.text().then(function(x){throw new Error('HTTP '+r.status+' '+String(x).slice(0,120))});
+      var s2=(get(SENT)||[]).concat(batch.map(function(b){return b.id}));if(s2.length>5000)s2=s2.slice(-5000);
+      try{localStorage.setItem(SENT,JSON.stringify(s2))}catch(e){}
+      busy=false;if(rows.length>100)setTimeout(pushAudit,500);
+    }).catch(function(e){busy=false;hold=Date.now()+10*60000;if(!warned){warned=true;console.warn('[DAN] Auditoria mantida só no navegador (tabela dan_audit_events indisponível):',e&&e.message)}});
+}
+setTimeout(pushAudit,12000);setInterval(pushAudit,20000);
+document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')pushAudit()});
 })();
 </script>
 </body>
