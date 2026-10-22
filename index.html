@@ -3998,15 +3998,16 @@ html.cx-on .crumb:after{content:"Financeiro  /  Fluxo de caixa e cobrança";font
     });
     return h + '</tbody></table></div></section>';
   }
+  function grpSub(c) { var C = window.DAN_CLI, t = C ? C.groupText(c, app().customers || []) : ''; return t ? '<span class="cm-sub">' + esc(t) + '</span>' : ''; }
   function filtCus() { return (app().customers || []).filter(function (c) { return match(state.q, [c.name, c.doc, c.address, X('cus', c.id).contato]); }); }
   function cusExp(c) { var r = money(c.name, 'receivable'), lim = Number(X('cus', c.id).limite) || 0; return { r: r, lim: lim, over: lim > 0 && r.open > lim }; }
   function vCus() {
-    var list = filtCus(), h = bar('Buscar cliente, CNPJ, endereço, contato…');
+    var list = filtCus().sort(function (a, b) { var A = window.DAN_CLI ? DAN_CLI.sortKey(a) : a.name, B = window.DAN_CLI ? DAN_CLI.sortKey(b) : b.name; return A < B ? -1 : A > B ? 1 : 0; }), h = bar('Buscar cliente, CNPJ, endereço, contato…');
     h += '<section class="panel table-panel"><div class="table-wrap"><table class="vg-table"><thead><tr><th>Cliente</th><th>Documento</th><th>Endereço</th><th>Prazo</th><th>Contato</th><th style="text-align:right">A receber</th><th>Situação</th><th></th></tr></thead><tbody>';
     if (!list.length) h += '<tr><td colspan="8"><div class="cm-empty">Nenhum cliente encontrado.</div></td></tr>';
     list.forEach(function (c) {
       var x = X('cus', c.id), e = cusExp(c), st = x.status || 'Ativo', docOk = cnpjOk(c.doc) || cpfOk(c.doc);
-      h += '<tr class="vg-row" data-act="open" data-t="cus" data-id="' + esc(c.id) + '"><td><div class="tf-who"><span class="tf-av">' + esc(initials(c.name)) + '</span><div><b>' + esc(c.name) + '</b></div></div></td><td>' + esc(c.doc || '—') + (docOk ? '' : ' ' + chip('Dígito inválido', 'warn')) + '<span class="cm-sub">IE ' + esc(c.ie || '—') + '</span></td><td>' + esc(c.address || '—') + '</td><td>' + esc(c.term != null ? c.term + ' dias' : '—') + '</td><td>' + (x.contato ? esc(x.contato) : '<span class="cm-mute">—</span>') + '<span class="cm-sub">' + esc([x.fone, x.email].filter(Boolean).join(' · ')) + '</span></td><td style="text-align:right">' + brl(e.r.open) + '<span class="cm-sub ' + (e.over ? 'cm-bad' : '') + '">' + (e.lim ? (e.over ? 'acima do limite ' : 'limite ') + brl(e.lim) : 'sem limite definido') + '</span></td><td>' + chip(st, st === 'Ativo' ? 'ok' : '') + '</td><td><div class="cm-acts"><button class="pri" data-act="edit" data-t="cus" data-id="' + esc(c.id) + '">Editar</button><button class="danger" data-act="del" data-t="cus" data-id="' + esc(c.id) + '">Excluir</button></div></td></tr>';
+      h += '<tr class="vg-row" data-act="open" data-t="cus" data-id="' + esc(c.id) + '"><td><div class="tf-who"><span class="tf-av">' + esc(initials(c.name)) + '</span><div><b>' + esc(c.name) + '</b>' + grpSub(c) + '</div></div></td><td>' + esc(c.doc || '—') + (docOk ? '' : ' ' + chip('Dígito inválido', 'warn')) + '<span class="cm-sub">IE ' + esc(c.ie || '—') + '</span></td><td>' + esc(c.address || '—') + '</td><td>' + esc(c.term != null ? c.term + ' dias' : '—') + '</td><td>' + (x.contato ? esc(x.contato) : '<span class="cm-mute">—</span>') + '<span class="cm-sub">' + esc([x.fone, x.email].filter(Boolean).join(' · ')) + '</span></td><td style="text-align:right">' + brl(e.r.open) + '<span class="cm-sub ' + (e.over ? 'cm-bad' : '') + '">' + (e.lim ? (e.over ? 'acima do limite ' : 'limite ') + brl(e.lim) : 'sem limite definido') + '</span></td><td>' + chip(st, st === 'Ativo' ? 'ok' : '') + '</td><td><div class="cm-acts"><button class="pri" data-act="edit" data-t="cus" data-id="' + esc(c.id) + '">Editar</button><button class="danger" data-act="del" data-t="cus" data-id="' + esc(c.id) + '">Excluir</button></div></td></tr>';
     });
     return h + '</tbody></table></div></section>';
   }
@@ -4040,7 +4041,7 @@ html.cx-on .crumb:after{content:"Financeiro  /  Fluxo de caixa e cobrança";font
       h += '<section class="vg-sec"><h3>Operação e custo</h3><div class="cm-kv">' + kv('Viagens', u2.trips.length) + kv('Receita (CT-e)', brl(u2.ctes.reduce(function (a, c) { return a + (c.gross || 0); }, 0))) + kv('Despesas lançadas', brl(ex.reduce(function (a, e) { return a + (e.amount || 0); }, 0)) + ' (' + ex.length + ')') + kv('Pneus', tir.length + ' em controle · ' + tir.filter(function (t) { return t.life && (t.kmNow - t.kmIn) / t.life >= 0.9; }).length + ' com ≥ 90% da vida') + '</div></section>';
     } else {
       var e = cusExp(r), cu = (A.ctes || []).filter(function (c) { return c.customerId === r.id; });
-      h += '<section class="vg-sec"><h3>Cadastro</h3><div class="cm-kv">' + kv('Documento', esc(r.doc)) + kv('Inscrição estadual', esc(r.ie)) + kv('Endereço', esc(r.address)) + kv('Prazo de pagamento', r.term != null ? r.term + ' dias' : '') + kv('Contato', esc([x.contato, x.fone, x.email].filter(Boolean).join(' · '))) + kv('Observações', esc(x.obs)) + '</div></section><section class="vg-sec"><h3>Financeiro</h3><div class="cm-kv">' + kv('CT-e emitidos', cu.length + ' · ' + brl(cu.reduce(function (a, c) { return a + (c.gross || 0); }, 0))) + kv('A receber em aberto', '<span class="' + (e.over ? 'cm-bad' : '') + '">' + brl(e.r.open) + '</span>') + kv('Recebido', brl(e.r.done)) + kv('Limite de crédito', e.lim ? brl(e.lim) + (e.over ? ' — <b class="cm-bad">excedido</b>' : '') : 'não definido') + '</div></section>';
+      h += '<section class="vg-sec"><h3>Cadastro</h3><div class="cm-kv">' + kv('Documento', esc(r.doc)) + kv('Inscrição estadual', esc(r.ie)) + kv('Grupo / filiais', esc(window.DAN_CLI ? DAN_CLI.groupDetail(r, app().customers || []) : '')) + kv('Endereço', esc(r.address)) + kv('Prazo de pagamento', r.term != null ? r.term + ' dias' : '') + kv('Contato', esc([x.contato, x.fone, x.email].filter(Boolean).join(' · '))) + kv('Observações', esc(x.obs)) + '</div></section><section class="vg-sec"><h3>Financeiro</h3><div class="cm-kv">' + kv('CT-e emitidos', cu.length + ' · ' + brl(cu.reduce(function (a, c) { return a + (c.gross || 0); }, 0))) + kv('A receber em aberto', '<span class="' + (e.over ? 'cm-bad' : '') + '">' + brl(e.r.open) + '</span>') + kv('Recebido', brl(e.r.done)) + kv('Limite de crédito', e.lim ? brl(e.lim) + (e.over ? ' — <b class="cm-bad">excedido</b>' : '') : 'não definido') + '</div></section>';
     }
     var lg = F.audit.filter(function (a) { return a.k === kind && a.id === r.id; }).slice(0, 12);
     h += '<section class="vg-sec"><h3>Histórico de alterações</h3>' + (lg.length ? '<ul class="vg-log">' + lg.map(function (l) { return '<li><time>' + esc(fdt(l.t)) + '</time><span>' + esc(l.m) + '</span></li>'; }).join('') + '</ul>' : '<p class="cm-mute" style="font-size:12.5px">Nenhuma alteração registrada neste módulo.</p>') + '</section>';
@@ -4097,7 +4098,7 @@ html.cx-on .crumb:after{content:"Financeiro  /  Fluxo de caixa e cobrança";font
         sec('Manutenção') + fld('Odômetro atual (km)', 'kmAtual', x.kmAtual, { type: 'number' }) + fld('Próxima revisão (km)', 'revKm', x.revKm, { type: 'number' }) + fld('Próxima revisão (data)', 'revData', x.revData, { type: 'date' }) + fld('Observações', 'obs', x.obs, { full: 1 });
     } else {
       r = r || { term: 30 };
-      html = sec('Identificação') + fld('Razão social / nome *', 'name', r.name, { full: 1 }) + fld('CNPJ / CPF *', 'doc', r.doc) + fld('Inscrição estadual', 'ie', r.ie) + (r.address && !r.logradouro ? fld('Endereço cadastrado (texto antigo)', 'address', r.address, { full: 1, hint: 'Preencha o endereço estruturado abaixo; o texto antigo será substituído ao salvar.' }) : '') + sec('Endereço (necessário para CT-e)') + fld('CEP', 'cep', r.cep, { ph: '00000-000', hint: '<a href="#" data-cep="1">Buscar endereço pelo CEP</a>' }) + fld('Logradouro', 'logradouro', r.logradouro) + fld('Número', 'numero', r.numero) + fld('Complemento', 'compl', r.compl) + fld('Bairro', 'bairro', r.bairro) + fld('Município', 'mun', r.mun) + fld('UF', 'uf', r.uf, { ph: 'SP' }) + fld('Código IBGE do município', 'codMun', r.codMun, { hint: '7 dígitos. Preenchido pelo CEP.' }) + sec('Comercial') + fld('Prazo de pagamento (dias)', 'term', r.term, { type: 'number' }) + fld('Limite de crédito (R$)', 'limite', x.limite, { type: 'number', step: '0.01', hint: 'Alerta quando o saldo a receber ultrapassar o limite.' }) + sel('Situação', 'status', ['Ativo', 'Inativo'], x.status || 'Ativo') + fld('Contato', 'contato', x.contato) + fld('Telefone', 'fone', x.fone) + fld('E-mail', 'email', x.email, { type: 'email' }) + fld('Observações', 'obs', x.obs, { full: 1 });
+      html = sec('Identificação') + fld('Razão social / nome *', 'name', r.name, { full: 1 }) + fld('CNPJ / CPF *', 'doc', r.doc) + fld('Inscrição estadual', 'ie', r.ie, { hint: 'Número da IE ou ISENTO. Conferida conforme a UF do endereço.' }) + fld('Unidade (apelido)', 'unid', r.unid, { hint: 'Opcional. Distingue filiais do mesmo grupo, ex.: Osasco ou CD Cajamar.' }) + (r.address && !r.logradouro ? fld('Endereço cadastrado (texto antigo)', 'address', r.address, { full: 1, hint: 'Preencha o endereço estruturado abaixo; o texto antigo será substituído ao salvar.' }) : '') + sec('Endereço (necessário para CT-e)') + fld('CEP', 'cep', r.cep, { ph: '00000-000', hint: '<a href="#" data-cep="1">Buscar endereço pelo CEP</a>' }) + fld('Logradouro', 'logradouro', r.logradouro) + fld('Número', 'numero', r.numero) + fld('Complemento', 'compl', r.compl) + fld('Bairro', 'bairro', r.bairro) + fld('Município', 'mun', r.mun) + fld('UF', 'uf', r.uf, { ph: 'SP' }) + fld('Código IBGE do município', 'codMun', r.codMun, { hint: '7 dígitos. Preenchido pelo CEP.' }) + sec('Comercial') + fld('Prazo de pagamento (dias)', 'term', r.term, { type: 'number' }) + fld('Limite de crédito (R$)', 'limite', x.limite, { type: 'number', step: '0.01', hint: 'Alerta quando o saldo a receber ultrapassar o limite.' }) + sel('Situação', 'status', ['Ativo', 'Inativo'], x.status || 'Ativo') + fld('Contato', 'contato', x.contato) + fld('Telefone', 'fone', x.fone) + fld('E-mail', 'email', x.email, { type: 'email' }) + fld('Observações', 'obs', x.obs, { full: 1 });
     }
     modal('<h2>' + (isNew ? 'Novo ' : 'Editar ') + titles[kind] + '</h2><p class="cm-lead">Campos com * são obrigatórios. Documentos vencidos impedem a saída de viagens.</p><form class="cm-form" id="tf-f">' + html + '</form><div id="tf-live" style="margin-top:12px"></div><div class="cm-foot"><button class="btn btn-secondary" data-x="n">Cancelar</button><button class="btn btn-primary" data-x="y">' + (isNew ? 'Cadastrar' : 'Salvar alterações') + '</button></div>', function (m) {
       if (kind === 'cus') cepLookup(m);
@@ -4121,6 +4122,9 @@ html.cx-on .crumb:after{content:"Financeiro  /  Fluxo de caixa e cobrança";font
           if (d.cep && digits(d.cep).length !== 8) es.push('CEP deve ter 8 dígitos.');
           if (d.uf && !/^(AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)$/i.test(String(d.uf).trim())) es.push('UF inválida.');
           if (d.codMun && digits(d.codMun).length !== 7) es.push('Código IBGE do município deve ter 7 dígitos.');
+          var ieMsg = window.DAN_CLI ? DAN_CLI.ieCheck(d.ie, d.uf) : ''; if (ieMsg) es.push(ieMsg);
+          if (!es.length && String(d.ie || '').trim() && !String(d.uf || '').trim() && !/^isent/i.test(String(d.ie).trim())) ws.push('Informe a UF no endereço para conferir a inscrição estadual.');
+          if (!es.length && !String(d.ie || '').trim() && digits(d.doc).length === 14) ws.push('Sem inscrição estadual: o cliente será tratado como não contribuinte (CT-e sem IE do tomador). Se ele tiver IE, informe-a ou digite ISENTO.');
           if (!es.length && !(d.cep && d.logradouro && d.numero && d.bairro && d.mun && d.uf && digits(d.codMun).length === 7)) ws.push('Endereço incompleto: para emitir CT-e com este cliente faltam CEP, logradouro, número, bairro, município, UF ou código IBGE.');
           if (!digits(d.doc)) es.push('Informe o CNPJ/CPF.'); else if (dupe(A2.customers || [], 'doc', d.doc, id)) es.push('Já existe cliente com este documento.'); else if (digits(d.doc).length === 11 ? !cpfOk(d.doc) : !cnpjOk(d.doc)) ws.push('Documento com dígito verificador inválido.');
         }
@@ -4143,7 +4147,7 @@ html.cx-on .crumb:after{content:"Financeiro  /  Fluxo de caixa e cobrança";font
       ['limite', 'status', 'contato', 'fone', 'email', 'obs'].forEach(function (k) { ext[k] = d[k] || ''; });
       var T = function (k) { return String(d[k] == null ? '' : d[k]).trim(); }, cepF = digits(d.cep).length === 8 ? digits(d.cep).replace(/^(\d{5})(\d{3})$/, '$1-$2') : T('cep'), uf2 = T('uf').toUpperCase();
       var rua = [[T('logradouro'), T('numero')].filter(Boolean).join(', '), T('compl'), T('bairro'), [T('mun'), uf2].filter(Boolean).join('/'), cepF ? 'CEP ' + cepF : ''].filter(Boolean).join(' - ');
-      base = { id: id, name: d.name.trim(), doc: fmtCnpj(d.doc), ie: d.ie || '', address: rua || d.address || '', term: Number(d.term) || 0, cep: cepF, logradouro: T('logradouro'), numero: T('numero'), compl: T('compl'), bairro: T('bairro'), mun: T('mun'), uf: uf2, codMun: digits(d.codMun) };
+      base = { id: id, name: d.name.trim(), doc: fmtCnpj(d.doc), ie: window.DAN_CLI ? DAN_CLI.ieNorm(d.ie) : (d.ie || ''), unid: T('unid'), address: rua || d.address || '', term: Number(d.term) || 0, cep: cepF, logradouro: T('logradouro'), numero: T('numero'), compl: T('compl'), bairro: T('bairro'), mun: T('mun'), uf: uf2, codMun: digits(d.codMun) };
     }
     var old = F[kind][id] || {}, ch = Object.keys(ext).filter(function (k) { return String(old[k] || '') !== String(ext[k] || '') && !isNew; });
     F[kind][id] = Object.assign({}, old, ext); audit(kind, id, isNew ? 'Cadastro criado' : 'Cadastro editado' + (ch.length ? ' (' + ch.join(', ') + ')' : '')); persist();
@@ -4950,6 +4954,7 @@ iso=t=>new Date(t).toISOString().slice(0,10),
 dm=s=>s?s.slice(8,10)+'/'+s.slice(5,7):'—',
 sum=(a,f)=>a.reduce((x,y)=>x+(+f(y)||0),0),
 nm=(a,id,k)=>{var x=(a||[]).find(y=>y.id===id);return x?x[k||'name']:'—'},
+cl=(a,id)=>{var x=(a||[]).find(y=>y.id===id);return x?(window.DAN_CLI?DAN_CLI.label(x,a):x.name):'—'},
 ts=t=>/entreg/i.test(t.status)?'Entregue':/tr[âa]nsito/i.test(t.status)?'Em trânsito':'Programada',
 EMPTY='<p class="metric-note" style="padding:24px 0">Sem dados neste filtro.</p>';
 /* DADOS DE EXEMPLO = mesmos dados do ambiente de treinamento (Mercado Livre · furgão). Só em memória: nada é gravado no navegador nem no Supabase. */
@@ -5073,7 +5078,7 @@ h='<div class="dd-top"><div><div class="metric-label" style="letter-spacing:.12e
 '<button class="dd-chip" data-act="clr">Limpar filtros</button></div></div>'+
 '<div class="metric-grid">'+K.map((k,i)=>'<div class="metric-card clk" role="button" tabindex="0" data-act="kpi" data-k="'+i+'"><div class="metric-icon '+k.t+'">'+k.i+'</div><div class="metric-label">'+k.l+'</div><strong>'+k.v+'</strong><div class="metric-note">'+k.n+'</div></div>').join('')+'</div><div class="dd-grid">'+
 chart('Faturamento por '+(D.wk?'semana':'dia'),'Clique em uma barra para listar os CT-es.',vbars(fk.map(k=>({id:k,s:dm(k),l:[pre+dm(k)+': '+R$(fb[k])],v:[fb[k]]})),'day',[COL[0]]),'w')+
-chart('Faturamento por cliente','Clique para filtrar todo o painel por cliente.',hb(grp(D.cs.concat(D.ra.map(a=>({customerId:a.customerId,gross:a.amount}))),c=>c.customerId,c=>nm(cu,c.customerId),c=>c.gross),'cli',F.cli))+
+chart('Faturamento por cliente','Clique para filtrar todo o painel por cliente.',hb(grp(D.cs.concat(D.ra.map(a=>({customerId:a.customerId,gross:a.amount}))),c=>c.customerId,c=>cl(cu,c.customerId),c=>c.gross),'cli',F.cli))+
 chart('Fretes por motorista','Clique para filtrar todo o painel por motorista.',hb(grp(D.cs,c=>c.driverId,c=>nm(dv,c.driverId),c=>c.gross),'mot',F.mot))+
 chart('Viagens por status','Clique em uma fatia.',dn(st,'st','viagens',N),'t')+
 chart('Faturamento por UF de destino','Clique para listar os CT-es do destino.',dn(ufs.slice(0,7),'uf','R$',R$),'t')+
@@ -5119,7 +5124,7 @@ BOX.innerHTML='<div class="dd-top"><div><div class="metric-label" style="letter-
 '<div class="nv-k">'+kc(0,1,P?dlt(dp(fat,P.fat)):'')+kc(1,2,P?dlt(dp(mg,P.mg)):'')+kc(2,6)+kc(3,5)+kc(4,3,P?dlt(dp(D.cs.length,P.n)):'')+'</div><div class="nv-m">'+mi(5)+mi(6)+mi(7)+'</div>'+
 '<div class="nv-g nv-r2"><section class="nv-p"><div class="nv-hd"><h3>Faturamento por '+(D.wk?'semana':'dia')+'</h3><div class="nv-tabs"><button class="'+(mar?'':'on')+'" data-act="tab" data-k="fat">Faturamento</button><button class="'+(mar?'on':'')+'" data-act="tab" data-k="mar">% Margem</button></div></div><div class="nv-sc"><div style="min-width:'+fk.length*46+'px"><div class="nv-bars">'+bars+'</div><div class="nv-xl">'+xl+'</div></div></div></section>'+
 '<section class="nv-p"><h3>Faturamento por rota</h3>'+tb+'</section></div>'+
-'<div class="nv-g nv-r3"><section class="nv-p"><h3>Ranking de motoristas</h3>'+pod+'</section><section class="nv-p"><h3>Faturamento por cliente</h3>'+hb(grp(D.cs.concat(D.ra.map(a=>({customerId:a.customerId,gross:a.amount}))),c=>c.customerId,c=>nm(cu,c.customerId),c=>c.gross),'cli',F.cli)+'</section><section class="nv-p"><h3>Faturamento por UF de destino</h3><div class="nv-map">'+mp+'</div></section></div>'+
+'<div class="nv-g nv-r3"><section class="nv-p"><h3>Ranking de motoristas</h3>'+pod+'</section><section class="nv-p"><h3>Faturamento por cliente</h3>'+hb(grp(D.cs.concat(D.ra.map(a=>({customerId:a.customerId,gross:a.amount}))),c=>c.customerId,c=>cl(cu,c.customerId),c=>c.gross),'cli',F.cli)+'</section><section class="nv-p"><h3>Faturamento por UF de destino</h3><div class="nv-map">'+mp+'</div></section></div>'+
 '<div class="nv-g"><section class="nv-p"><h3>Fluxo financeiro por vencimento</h3><p class="metric-note">Verde: a receber · vermelho: a pagar. Clique em uma barra.</p>'+vbars(ek.map(k=>({id:k,s:dm(k),l:['A receber '+pre+dm(k)+': '+R$(eb[k][0]),'A pagar '+pre+dm(k)+': '+R$(eb[k][1])],v:eb[k]})),'fl',['var(--dc2)','var(--dc5)'])+'</section></div>'+
 '<div class="nv-g nv-r2e"><section class="nv-p"><h3>Viagens por status</h3>'+dn(st,'st','viagens',N)+'</section><section class="nv-p"><h3>Financeiro por situação</h3>'+dn(fs,'fs','R$',R$)+'</section></div>'+drp(dr)}
 
@@ -6343,6 +6348,50 @@ function pushAudit(){
 }
 setTimeout(pushAudit,12000);setInterval(pushAudit,20000);
 document.addEventListener('visibilitychange',function(){if(document.visibilityState==='hidden')pushAudit()});
+})();
+</script>
+<script id="dan-v56-cliente">
+/* DAN_CLI: regras de cliente — filiais pela raiz do CNPJ e inscrição estadual (IE) por UF.
+   Usado por mod-tf (cadastro) e pelo dashboard (rótulo de unidade). Sem dependência de tela: testável. */
+(function(){'use strict';
+var LEN={AC:[13],AL:[9],AP:[9],AM:[9],BA:[8,9],CE:[9],DF:[13],ES:[9],GO:[9],MA:[9],MT:[11],MS:[9],MG:[13],PA:[9],PB:[9],PR:[10],PE:[9,14],PI:[9],RJ:[8],RN:[9,10],RS:[10],RO:[9,14],RR:[9],SC:[9],SP:[12],SE:[9],TO:[9,11]};
+function digits(s){return String(s==null?'':s).replace(/\D/g,'')}
+function root(doc){var d=digits(doc);return d.length===14?d.slice(0,8):''}
+function order(doc){var d=digits(doc);return d.length===14?d.slice(8,12):''}
+function rootFmt(r){return r?r.slice(0,2)+'.'+r.slice(2,5)+'.'+r.slice(5,8):''}
+function same(c,all){var r=root(c&&c.doc);return r?(all||[]).filter(function(x){return root(x&&x.doc)===r}):[c]}
+function unitName(c){return c.unid||(order(c.doc)==='0001'?'Matriz':'Filial '+order(c.doc))}
+function sortKey(c){var r=root(c.doc);return (r||('z'+String(c.name||'').toLowerCase()))+'|'+order(c.doc)}
+function groupText(c,all){
+  var g=same(c,all),o=order(c.doc);if(!o)return '';
+  if(g.length>1)return unitName(c)+(c.unid&&o!=='0001'?' · filial '+o:'')+' · grupo '+rootFmt(root(c.doc))+' ('+g.length+' unidades)';
+  return o==='0001'?'':'Filial '+o+(c.unid?' · '+c.unid:'');
+}
+function groupDetail(c,all){
+  var g=same(c,all).filter(function(x){return x&&x.id!==c.id});
+  if(!g.length)return '';
+  return (order(c.doc)==='0001'?'Matriz':unitName(c))+' · outras unidades: '+g.map(function(x){return x.name+' ('+(x.unid||order(x.doc))+')'}).join(', ');
+}
+function label(c,all){return same(c,all).length>1?c.name+' · '+unitName(c):c.name}
+function ieNorm(v){var t=String(v==null?'':v).trim();return /^isent/i.test(t)?'ISENTO':t}
+function spOk(d){
+  var p=[1,3,4,5,6,7,8,10],w=[3,2,10,9,8,7,6,5,4,3,2],a=0,b=0,i;
+  for(i=0;i<8;i++)a+=+d[i]*p[i];
+  if(a%11%10!==+d[8])return false;
+  for(i=0;i<11;i++)b+=+d[i]*w[i];
+  return b%11%10===+d[11];
+}
+/* '' = ok; senão a mensagem. SP: dígitos verificadores; demais UFs: só quantidade de dígitos. */
+function ieCheck(ie,uf){
+  var t=ieNorm(ie);if(!t||t==='ISENTO')return '';
+  var u=String(uf||'').toUpperCase().trim();if(!u||!LEN[u])return '';
+  var d=digits(t);
+  if(u==='SP'&&/^P\d{12}$/i.test(t.replace(/\s|\.|-/g,'')))return '';
+  if(LEN[u].indexOf(d.length)<0)return 'Inscrição estadual inválida para '+u+': deve ter '+LEN[u].join(' ou ')+' dígitos (ou ISENTO).';
+  if(u==='SP'&&d.length===12&&!spOk(d))return 'Inscrição estadual de SP com dígito verificador inválido.';
+  return '';
+}
+window.DAN_CLI={digits:digits,root:root,order:order,rootFmt:rootFmt,same:same,sortKey:sortKey,groupText:groupText,groupDetail:groupDetail,label:label,ieNorm:ieNorm,ieCheck:ieCheck};
 })();
 </script>
 </body>
